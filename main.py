@@ -16,30 +16,32 @@ load_dotenv()
 os.environ["HUGGINGFACEHUB_API_TOKEN"] = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
 # Carrega markdown já chunkado
-loader = TextLoader("/content/chunks_exemplos.md")
+current_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(current_dir, "chunks_exemplos.md")
+loader = TextLoader(file_path)
 docs = loader.load()
 splits = docs
 
 # Indexação com embeddings
 embeddings = HuggingFaceEmbeddings(
-    model_name="BAAI/bge-m3",
-    model_kwargs={"device": "cpu"}
+    model_name="BAAI/bge-m3", model_kwargs={"device": "cpu"}
 )
 vectorstore = FAISS.from_documents(splits, embeddings)
-retriever = vectorstore.as_retriever(search_type='mmr', search_kwargs={'k': 3, 'fetch_k': 4})
+retriever = vectorstore.as_retriever(
+    search_type="mmr", search_kwargs={"k": 3, "fetch_k": 4}
+)
 
 # Carrega modelo local phi-4-mini
 phi_model_id = "microsoft/phi-4-mini-instruct"
 phi_tokenizer = AutoTokenizer.from_pretrained(phi_model_id)
 phi_model = AutoModelForCausalLM.from_pretrained(
-    phi_model_id,
-    device_map="auto",
-    torch_dtype=torch.float16
+    phi_model_id, device_map="auto", torch_dtype=torch.float16
 )
 
 # Inicializa histórico no session_state
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+
 
 # Função que responde perguntas
 def responder(pergunta):
@@ -62,16 +64,15 @@ def responder(pergunta):
         {pergunta}
         """
 
-        input_ids = phi_tokenizer(prompt, return_tensors="pt").input_ids.to(phi_model.device)
+        input_ids = phi_tokenizer(prompt, return_tensors="pt").input_ids.to(
+            phi_model.device
+        )
         output = phi_model.generate(
-            input_ids,
-            max_new_tokens=512,
-            temperature=0.1,
-            do_sample=False
+            input_ids, max_new_tokens=512, temperature=0.1, do_sample=False
         )[0]
 
         full_text = phi_tokenizer.decode(output, skip_special_tokens=True)
-        resposta = full_text[len(prompt):].strip()
+        resposta = full_text[len(prompt) :].strip()
 
         st.session_state.chat_history.append(HumanMessage(content=pergunta))
         st.session_state.chat_history.append(AIMessage(content=resposta))
