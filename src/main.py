@@ -47,14 +47,14 @@ def get_llm():
     from huggingface_hub import hf_hub_download
     from ctransformers import AutoModelForCausalLM
 
-    # baixa o arquivo GGUF quantizado (~0.9 GB) para CPU-only
-    model_path = hf_hub_download(
-        repo_id="TheBloke/phi-4-mini-instruct-GGUF",
-        filename="phi-4-mini-instruct.Q4_K_M.gguf",
-        token=HF_TOKEN,
-    )
+    # 1) repo + filename corretos
+    repo_id = "tensorblock/Phi-4-mini-instruct-GGUF"
+    filename = "Phi-4-mini-instruct-Q4_K_M.gguf"  # note os hífens e maiúsculas
 
-    # carrega o modelo local via ctransformers
+    # 2) faz o download (e cache) para a VM
+    model_path = hf_hub_download(repo_id=repo_id, filename=filename, token=HF_TOKEN)
+
+    # 3) carrega o GGUF em CPU
     llm = AutoModelForCausalLM.from_pretrained(
         model_path, model_type="phi", context_length=4096, gpu_layers=0
     )
