@@ -2,7 +2,7 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-import streamlit as st  # cache_resource
+import streamlit as st  # para @st.cache_resource
 
 # ── env --------------------------------------------------------------------
 load_dotenv()
@@ -31,47 +31,51 @@ def get_retriever():
     return vect.as_retriever(search_type="mmr", search_kwargs={"k": 3, "fetch_k": 4})
 
 
-# ── LLM  : Phi‑4‑mini em 4‑bit ---------------------------------------------
+# ── LLM  : Phi‑4‑mini (GGUF 4‑bit) -----------------------------------------
 @st.cache_resource
 def get_llm():
-    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-    import torch
+    from huggingface_hub import hf_hub_download
+    from ctransformers import AutoModelForCausalLM
 
-    model_id = "microsoft/phi-4-mini-instruct"
-    bnb_cfg = BitsAndBytesConfig(load_in_4bit=True)  # quantização leve
+    REPO_ID = "TheBloke/phi-4-mini-instruct-GGUF"
+    MODEL_FILE = "phi-4-mini-instruct.Q4_K_M.gguf"  # 4‑bit, ~0.9 GB
 
-    tok = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        quantization_config=bnb_cfg,
-        device_map="auto",
-        torch_dtype=torch.float16,
-        low_cpu_mem_usage=True,
+    model_path = hf_hub_download(
+        repo_id=REPO_ID,
+        filename=MODEL_FILE,
+        token=HF_TOKEN,
     )
-    return tok, model
+
+    llm = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        model_type="phi",  # importante para o tokenizer interno
+        context_length=4096,
+        gpu_layers=0,  # CPU‑only
+    )
+    return llm
 
 
 # ── função pública ----------------------------------------------------------
 def gerar_resposta(pergunta: str) -> str:
     retriever = get_retriever()
-    tokenizer, llm = get_llm()
+    llm = get_llm()
 
     docs = retriever.get_relevant_documents(pergunta)
     contexto = "\n\n".join(d.page_content[:1000] for d in docs) or "N/D"
 
-    prompt = f"""
-    Você é um assistente financeiro. Com base no seguinte contexto,
-    responda de forma clara e objetiva. Caso não saiba, responda
-    que não sabe.
+    prompt = f"""Você é um assistente financeiro. Com base no seguinte contexto,
+responda de forma clara e objetiva. Caso não saiba, responda que não sabe.
 
-    Contexto:
-    {contexto}
+Contexto:
+{contexto}
 
-    Pergunta:
-    {pergunta}
-    """
+Pergunta:
+{pergunta}
+"""
 
-    ids = tokenizer(prompt, return_tensors="pt").input_ids.to(llm.device)
-    out = llm.generate(ids, max_new_tokens=256, temperature=0.1, do_sample=False)[0]
-    full = tokenizer.decode(out, skip_special_tokens=True)
-    return full[len(prompt) :].strip()
+    resposta = llm(
+        prompt,
+        max_new_tokens=256,
+        temperature=0.1,
+    )
+    return resposta.strip()
