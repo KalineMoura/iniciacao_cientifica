@@ -16,17 +16,27 @@ DATA_FILE = BASE_DIR.parent / "data" / "chunks_exemplos.md"
 # ── embeddings + retriever --------------------------------------------------
 @st.cache_resource
 def get_retriever():
+    # ↓ snapshot_download baixa (e cacheia) o repo completo localmente
+    from huggingface_hub import snapshot_download
+
+    repo_dir = snapshot_download(repo_id="BAAI/bge-small-en-v1.5", token=HF_TOKEN)
+
+    # carregando os documentos
     from langchain_community.document_loaders import TextLoader
-    from langchain_community.vectorstores import FAISS
-    from langchain.embeddings import HuggingFaceEmbeddings
 
     loader = TextLoader(DATA_FILE)
     docs = loader.load()
 
+    # inicializando embeddings a partir da pasta local (repo_dir contém config.json)
+    from langchain.embeddings import HuggingFaceEmbeddings
+
     embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-small-en-v1.5",
-        model_kwargs={"device": "cpu"},
+        model_name=repo_dir, model_kwargs={"device": "cpu"}
     )
+
+    # criando o FAISS
+    from langchain_community.vectorstores import FAISS
+
     vect = FAISS.from_documents(docs, embeddings)
     return vect.as_retriever(search_type="mmr", search_kwargs={"k": 3, "fetch_k": 4})
 
@@ -37,20 +47,16 @@ def get_llm():
     from huggingface_hub import hf_hub_download
     from ctransformers import AutoModelForCausalLM
 
-    REPO_ID = "TheBloke/phi-4-mini-instruct-GGUF"
-    MODEL_FILE = "phi-4-mini-instruct.Q4_K_M.gguf"  # 4‑bit, ~0.9 GB
-
+    # baixa o arquivo GGUF quantizado (~0.9 GB) para CPU-only
     model_path = hf_hub_download(
-        repo_id=REPO_ID,
-        filename=MODEL_FILE,
+        repo_id="TheBloke/phi-4-mini-instruct-GGUF",
+        filename="phi-4-mini-instruct.Q4_K_M.gguf",
         token=HF_TOKEN,
     )
 
+    # carrega o modelo local via ctransformers
     llm = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        model_type="phi",  # importante para o tokenizer interno
-        context_length=4096,
-        gpu_layers=0,  # CPU‑only
+        model_path, model_type="phi", context_length=4096, gpu_layers=0
     )
     return llm
 
@@ -73,9 +79,6 @@ Pergunta:
 {pergunta}
 """
 
-    resposta = llm(
-        prompt,
-        max_new_tokens=256,
-        temperature=0.1,
-    )
+    # como ctransformers já trata tokenizer e geração:
+    resposta = llm(prompt, max_new_tokens=256, temperature=0.1)
     return resposta.strip()
