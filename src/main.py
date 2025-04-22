@@ -26,7 +26,7 @@ def _build_retriever():
     docs = loader.load()
 
     embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-m3",
+        model_name="BAAI/bge-small-en-v1.5",
         model_kwargs={"device": "cpu"},
     )
     vectorstore = FAISS.from_documents(docs, embeddings)
