@@ -1,8 +1,8 @@
 # src/app.py
 import streamlit as st
+import time
 from langchain_core.messages import AIMessage, HumanMessage
-
-from main import gerar_resposta  # ← importa do src.main
+from main import gerar_resposta  # chama a função lazy‑cacheada
 
 st.set_page_config(page_title="Assistente Financeiro", page_icon="💰")
 st.title("💰 Assistente Financeiro")
@@ -17,7 +17,7 @@ if st.button("🗑️ Limpar conversa"):
     st.session_state.chat_history = st.session_state.chat_history[:1]
     st.experimental_rerun()
 
-# ---- exibe histórico -------------------------------------------------------
+# ---- exibe histórico existente --------------------------------------------
 for msg in st.session_state.chat_history:
     role = "user" if isinstance(msg, HumanMessage) else "assistant"
     with st.chat_message(role):
@@ -31,13 +31,17 @@ if pergunta:
 
     with st.chat_message("assistant"):
         placeholder = st.empty()
-        resposta = gerar_resposta(pergunta)
+        with st.spinner("Gerando resposta..."):
+            try:
+                resposta = gerar_resposta(pergunta)
+            except Exception as e:
+                resposta = f"Desculpe, ocorreu um erro: {e}"
 
         # animação de “digitando…”
         buf = ""
         for ch in resposta:
             buf += ch
             placeholder.markdown(buf)
-            st.sleep(0.015)
+            time.sleep(0.012)
 
         st.session_state.chat_history.append(AIMessage(content=resposta))

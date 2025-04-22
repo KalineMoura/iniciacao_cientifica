@@ -3,16 +3,11 @@ from pathlib import Path
 import os, time
 from dotenv import load_dotenv
 
-from langchain_community.document_loaders import TextLoader
-from langchain_community.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import streamlit as st  # ← para cache_resource
 from langchain_core.messages import AIMessage, HumanMessage
 
-import torch
-
 # ── env --------------------------------------------------------------------
-load_dotenv()
+load_dotenv()  # carrega secrets do Streamlit tb.
 HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
 # ── caminhos ----------------------------------------------------------------
@@ -20,13 +15,18 @@ BASE_DIR = Path(__file__).resolve().parent  # .../src
 DATA_FILE = BASE_DIR.parent / "data" / "chunks_exemplos.md"
 
 
-# ── embeddings + retriever (cache simples) ----------------------------------
-def _build_retriever():
+# ── embeddings + retriever --------------------------------------------------
+@st.cache_resource
+def get_retriever():
+    from langchain_community.document_loaders import TextLoader
+    from langchain_community.vectorstores import FAISS
+    from langchain.embeddings import HuggingFaceEmbeddings
+
     loader = TextLoader(DATA_FILE)
     docs = loader.load()
 
     embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-small-en-v1.5",
+        model_name="BAAI/bge-small-en-v1.5",  # leve, multilíngue
         model_kwargs={"device": "cpu"},
     )
     vectorstore = FAISS.from_documents(docs, embeddings)
@@ -36,21 +36,33 @@ def _build_retriever():
     )
 
 
-RETRIEVER = _build_retriever()
+# ── LLM (Phi‑3‑mini 4‑bit) --------------------------------------------------
+@st.cache_resource
+def get_llm():
+    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+    import torch, accelerate
 
-# ── modelo LLM (Phi‑4‑mini) --------------------------------------------------
-phi_id = "microsoft/phi-4-mini-instruct"
-PHI_TOKENIZER = AutoTokenizer.from_pretrained(phi_id)
-PHI_MODEL = AutoModelForCausalLM.from_pretrained(
-    phi_id, device_map="auto", torch_dtype=torch.float16
-)
+    bnb_cfg = BitsAndBytesConfig(load_in_4bit=True)
+    model_id = "microsoft/phi-3-mini-4k-instruct"  # ~3.8 B, cabe em 4‑bit
+
+    tok = AutoTokenizer.from_pretrained(model_id)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        quantization_config=bnb_cfg,
+        device_map="auto",
+        torch_dtype=torch.float16,
+    )
+    return tok, model
 
 
 # ── função pública ----------------------------------------------------------
 def gerar_resposta(pergunta: str) -> str:
-    """Retorna uma string com a resposta do assistente."""
-    docs_relev = RETRIEVER.get_relevant_documents(pergunta)
-    contexto = "\n\n".join(doc.page_content[:1000] for doc in docs_relev)
+    """Gera resposta do assistente financeiro."""
+    retriever = get_retriever()
+    tokenizer, llm = get_llm()
+
+    docs_relev = retriever.get_relevant_documents(pergunta)
+    contexto = "\n\n".join(doc.page_content[:1000] for doc in docs_relev) or "N/D"
 
     prompt = f"""
     Você é um assistente financeiro. Com base no seguinte contexto,
@@ -64,10 +76,8 @@ def gerar_resposta(pergunta: str) -> str:
     {pergunta}
     """
 
-    ids = PHI_TOKENIZER(prompt, return_tensors="pt").input_ids.to(PHI_MODEL.device)
-    output = PHI_MODEL.generate(
-        ids, max_new_tokens=512, temperature=0.1, do_sample=False
-    )[0]
+    ids = tokenizer(prompt, return_tensors="pt").input_ids.to(llm.device)
+    output = llm.generate(ids, max_new_tokens=256, temperature=0.1, do_sample=False)[0]
+    full = tokenizer.decode(output, skip_special_tokens=True)
 
-    full = PHI_TOKENIZER.decode(output, skip_special_tokens=True)
     return full[len(prompt) :].strip()
