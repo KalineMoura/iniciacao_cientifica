@@ -43,7 +43,6 @@ def get_retriever():
 
 # ── LLM  : Phi‑4‑mini (GGUF 4‑bit) -----------------------------------------
 @st.cache_resource
-@st.cache_resource
 def get_llm():
     from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
