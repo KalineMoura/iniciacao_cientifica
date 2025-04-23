@@ -1,10 +1,13 @@
-streamlit 
-transformers 
-torch 
-langchain 
-langchain-community 
-faiss-cpu 
-sentence-transformers 
-huggingface-hub 
-python-dotenv 
+streamlit==1.33.0
+#ctransformers==0.2.27           # carrega GGUF em CPU
+sentence-transformers==2.5.1
+transformers==4.40.2            # ainda preciso p/ embeddings
+faiss-cpu
+langchain==0.1.16
+huggingface-hub
+python-dotenv
+bitsandbytes
+accelerate
+torch==2.2.2 
+
 
