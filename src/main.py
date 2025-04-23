@@ -2,7 +2,9 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-import streamlit as st  # para @st.cache_resource
+import streamlit as st
+import time
+from requests.exceptions import ReadTimeout
 
 # ── env --------------------------------------------------------------------
 load_dotenv()
@@ -16,56 +18,64 @@ DATA_FILE = BASE_DIR.parent / "data" / "chunks_exemplos.md"
 # ── embeddings + retriever --------------------------------------------------
 @st.cache_resource
 def get_retriever():
-    # ↓ snapshot_download baixa (e cacheia) o repo completo localmente
     from huggingface_hub import snapshot_download
-
-    repo_dir = snapshot_download(repo_id="BAAI/bge-small-en-v1.5", token=HF_TOKEN)
-
-    # carregando os documentos
     from langchain_community.document_loaders import TextLoader
+    from langchain_community.vectorstores import FAISS
+    from langchain.embeddings import HuggingFaceEmbeddings
+
+    # retry + timeout elevado para o download do repo de embeddings
+    for attempt in range(3):
+        try:
+            repo_dir = snapshot_download(
+                repo_id="BAAI/bge-small-en-v1.5",
+                token=HF_TOKEN,
+                timeout=(60, 300),  # connect/read timeouts em segundos
+            )
+            break
+        except ReadTimeout:
+            if attempt == 2:
+                raise
+            time.sleep(5)  # aguarda antes de tentar de novo
 
     loader = TextLoader(DATA_FILE)
     docs = loader.load()
 
-    # inicializando embeddings a partir da pasta local (repo_dir contém config.json)
-    from langchain.embeddings import HuggingFaceEmbeddings
-
     embeddings = HuggingFaceEmbeddings(
-        model_name=repo_dir, model_kwargs={"device": "cpu"}
+        model_name=repo_dir,  # usa o cache local
+        model_kwargs={"device": "cpu"},
     )
-
-    # criando o FAISS
-    from langchain_community.vectorstores import FAISS
-
     vect = FAISS.from_documents(docs, embeddings)
     return vect.as_retriever(search_type="mmr", search_kwargs={"k": 3, "fetch_k": 4})
 
 
-# ── LLM  : Phi‑4‑mini (GGUF 4‑bit) -----------------------------------------
+# ── LLM  : Phi-3-mini (GGUF 4-bit) -----------------------------------------
 @st.cache_resource
 def get_llm():
-    from huggingface_hub import snapshot_download
-    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+    from huggingface_hub import hf_hub_download
+    from ctransformers import AutoModelForCausalLM
 
-    # 1) Baixa e cacheia o repositório localmente (contém config.json, código custom, pesos)
-    repo_dir = snapshot_download(
-        repo_id="microsoft/phi-3-mini-4k-instruct", token=HF_TOKEN
+    # retry + timeout para baixar o .gguf
+    for attempt in range(3):
+        try:
+            model_path = hf_hub_download(
+                repo_id="microsoft/phi-3-mini-4k-instruct",
+                filename="Phi-3-mini-instruct-Q4_K_M.gguf",
+                token=HF_TOKEN,
+                timeout=(60, 600),
+            )
+            break
+        except ReadTimeout:
+            if attempt == 2:
+                raise
+            time.sleep(5)
+
+    llm = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        model_type="phi-3-mini",  # ou "phi3" conforme necessário
+        context_length=4096,
+        gpu_layers=0,
     )
-
-    # 2) Configura quantização 4-bit
-    bnb_cfg = BitsAndBytesConfig(load_in_4bit=True, llm_int8_threshold=6.0)
-
-    # 3) Carrega tokenizer e modelo a partir da pasta local
-    tokenizer = AutoTokenizer.from_pretrained(repo_dir, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        repo_dir,
-        trust_remote_code=True,
-        quantization_config=bnb_cfg,
-        device_map="auto",
-        torch_dtype="auto",
-        low_cpu_mem_usage=True,
-    )
-    return tokenizer, model
+    return llm
 
 
 # ── função pública ----------------------------------------------------------
@@ -86,6 +96,5 @@ Pergunta:
 {pergunta}
 """
 
-    # como ctransformers já trata tokenizer e geração:
     resposta = llm(prompt, max_new_tokens=256, temperature=0.1)
     return resposta.strip()
