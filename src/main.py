@@ -46,12 +46,14 @@ def get_retriever():
 def get_llm():
     from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
-    model_id = "microsoft/Phi-3-mini-4k-instruct"  # modelo mais leve
+    model_id = "microsoft/phi-3-mini-4k-instruct"
     bnb_cfg = BitsAndBytesConfig(load_in_4bit=True, llm_int8_threshold=6.0)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    # autoriza execução do código custom no repo
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
+        trust_remote_code=True,
         quantization_config=bnb_cfg,
         device_map="auto",
         torch_dtype="auto",
