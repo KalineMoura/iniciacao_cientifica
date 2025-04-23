@@ -56,7 +56,7 @@ def get_llm():
 
     # 3) carrega o GGUF em CPU
     llm = AutoModelForCausalLM.from_pretrained(
-        model_path, model_type="phi", context_length=4096, gpu_layers=0
+        model_path, model_type="llama", context_length=4096, gpu_layers=0
     )
     return llm
 
