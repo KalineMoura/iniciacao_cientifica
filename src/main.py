@@ -43,22 +43,22 @@ def get_retriever():
 
 # ── LLM  : Phi‑4‑mini (GGUF 4‑bit) -----------------------------------------
 @st.cache_resource
+@st.cache_resource
 def get_llm():
-    from huggingface_hub import hf_hub_download
-    from ctransformers import AutoModelForCausalLM
+    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
-    # 1) repo + filename corretos
-    repo_id = "tensorblock/Phi-4-mini-instruct-GGUF"
-    filename = "Phi-4-mini-instruct-Q4_K_M.gguf"  # note os hífens e maiúsculas
+    model_id = "microsoft/Phi-3-mini-4k-instruct"  # modelo mais leve
+    bnb_cfg = BitsAndBytesConfig(load_in_4bit=True, llm_int8_threshold=6.0)
 
-    # 2) faz o download (e cache) para a VM
-    model_path = hf_hub_download(repo_id=repo_id, filename=filename, token=HF_TOKEN)
-
-    # 3) carrega o GGUF em CPU
-    llm = AutoModelForCausalLM.from_pretrained(
-        model_path, model_type="phi3", context_length=4096, gpu_layers=0
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        quantization_config=bnb_cfg,
+        device_map="auto",
+        torch_dtype="auto",
+        low_cpu_mem_usage=True,
     )
-    return llm
+    return tokenizer, model
 
 
 # ── função pública ----------------------------------------------------------

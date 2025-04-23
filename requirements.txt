@@ -6,6 +6,6 @@ faiss-cpu
 langchain==0.1.16
 huggingface-hub
 python-dotenv
-
+bitsandbytes==0.39.0
 
 
