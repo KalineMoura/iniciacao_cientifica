@@ -47,17 +47,15 @@ def get_llm():
     from huggingface_hub import snapshot_download
     from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
-    # 1) Baixa e cacheia todo o repo localmente (inclui config.json, código custom, pesos)
+    # 1) Baixa e cacheia o repositório localmente (contém config.json, código custom, pesos)
     repo_dir = snapshot_download(
-        repo_id="microsoft/phi-3-mini-4k-instruct",
-        token=HF_TOKEN,
-        trust_remote_code=True,
+        repo_id="microsoft/phi-3-mini-4k-instruct", token=HF_TOKEN
     )
 
-    # 2) Configura a quantização 4-bit
+    # 2) Configura quantização 4-bit
     bnb_cfg = BitsAndBytesConfig(load_in_4bit=True, llm_int8_threshold=6.0)
 
-    # 3) Carrega tokenizer e modelo a partir do diretório local
+    # 3) Carrega tokenizer e modelo a partir da pasta local
     tokenizer = AutoTokenizer.from_pretrained(repo_dir, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         repo_dir,
