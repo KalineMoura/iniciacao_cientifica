@@ -54,23 +54,15 @@ def get_llm():
     from huggingface_hub import hf_hub_download
     from ctransformers import AutoModelForCausalLM
 
-    # retry simples
-    for attempt in range(3):
-        try:
-            model_path = hf_hub_download(
-                repo_id="microsoft/phi-3-mini-instruct",  # ou 4k-instruct
-                filename="Phi-3-mini-instruct-Q4_K_M.gguf",
-                token=HF_TOKEN,
-            )
-            break
-        except ReadTimeout:
-            if attempt == 2:
-                raise
-            time.sleep(5)
+    # ↓ repos correto e nome exato do arquivo
+    repo_id = "microsoft/Phi-3-mini-4k-instruct-gguf"
+    filename = "Phi-3-mini-4k-instruct-q4.gguf"
+
+    model_path = hf_hub_download(repo_id=repo_id, filename=filename, token=HF_TOKEN)
 
     llm = AutoModelForCausalLM.from_pretrained(
         model_path,
-        model_type="phi-3-mini",  # use "phi-3-mini" ou "phi-4-mini" conforme arquivo
+        model_type="phi-3-mini",  # para phi-3-mini-4k-instruct GGUF
         context_length=4096,
         gpu_layers=0,
     )
