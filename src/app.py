@@ -3,10 +3,6 @@ import streamlit as st
 import time
 from langchain_core.messages import AIMessage, HumanMessage
 from main import gerar_resposta  # chama a função lazy‑cacheada
-######
-!pip install accelerate
-######
-
 
 st.set_page_config(page_title="Assistente Financeiro", page_icon="💰")
 st.title("💰 Assistente Financeiro")
