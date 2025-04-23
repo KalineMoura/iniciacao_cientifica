@@ -19,33 +19,25 @@ DATA_FILE = BASE_DIR.parent / "data" / "chunks_exemplos.md"
 
 # ── embeddings + retriever --------------------------------------------------
 @st.cache_resource
-def get_retriever():
-    from huggingface_hub import snapshot_download
-    from langchain_community.document_loaders import TextLoader
-    from langchain_community.vectorstores import FAISS
-    from langchain.embeddings import HuggingFaceEmbeddings
+def get_llm():
+    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
-    # retry simples
-    for attempt in range(3):
-        try:
-            repo_dir = snapshot_download(
-                repo_id="BAAI/bge-small-en-v1.5",
-                token=HF_TOKEN,
-            )
-            break
-        except ReadTimeout:
-            if attempt == 2:
-                raise
-            time.sleep(5)
+    model_id = "microsoft/phi-3-mini-instruct"  # modelo compatível
+    # quantização 4-bit leve
+    bnb_cfg = BitsAndBytesConfig(load_in_4bit=True)
 
-    loader = TextLoader(DATA_FILE)
-    docs = loader.load()
-    embeddings = HuggingFaceEmbeddings(
-        model_name=repo_dir,
-        model_kwargs={"device": "cpu"},
+    # autoriza custom code e carrega tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    # carrega o modelo em 4-bit via bitsandbytes
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        trust_remote_code=True,
+        quantization_config=bnb_cfg,
+        device_map="auto",
+        torch_dtype="auto",
+        low_cpu_mem_usage=True,
     )
-    vect = FAISS.from_documents(docs, embeddings)
-    return vect.as_retriever(search_type="mmr", search_kwargs={"k": 3, "fetch_k": 4})
+    return tokenizer, model
 
 
 # ── LLM  : Phi-4-mini (GGUF 4-bit) -----------------------------------------
