@@ -1,24 +1,15 @@
-# src/main.py
 from pathlib import Path
 import os
 from dotenv import load_dotenv
 import streamlit as st
-import torch   # precisamos verificar GPU
 
-# ── env & timeout HF Hub ----------------------------------------------------
+# ── env & caminhos ----------------------------------------------------------
 load_dotenv()
-HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-os.environ["HF_HUB_REQUEST_TIMEOUT"] = "60,300"
-
-# 🟢  habilita back-end CPU do bitsandbytes caso não haja GPU
-if not torch.cuda.is_available():
-    os.environ["BNB_CUDALESS"] = "1"
-
-# ── caminhos ----------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR.parent / "data" / "chunks_exemplos.md"
+MODEL_FILE = BASE_DIR.parent / "models" / "phi3-mini.q4.gguf"   # ← caminho local
 
-# ── embeddings + retriever --------------------------------------------------
+# ── embeddings + retriever (igual ao anterior) ------------------------------
 @st.cache_resource
 def get_retriever():
     from langchain_community.document_loaders import TextLoader
@@ -26,53 +17,28 @@ def get_retriever():
     from langchain_community.embeddings import HuggingFaceEmbeddings
     from huggingface_hub import snapshot_download
 
-    repo_dir = snapshot_download("BAAI/bge-small-en-v1.5", token=HF_TOKEN)
-
-    loader = TextLoader(DATA_FILE)
-    docs = loader.load()
-
-    embeddings = HuggingFaceEmbeddings(
-        model_name=repo_dir,
-        model_kwargs={"device": "cpu"},
-    )
-    vect = FAISS.from_documents(docs, embeddings)
+    repo_dir = snapshot_download("BAAI/bge-small-en-v1.5")
+    docs = TextLoader(DATA_FILE).load()
+    emb = HuggingFaceEmbeddings(model_name=repo_dir, model_kwargs={"device": "cpu"})
+    vect = FAISS.from_documents(docs, emb)
     return vect.as_retriever(search_type="mmr", search_kwargs={"k": 3, "fetch_k": 4})
 
-# ── LLM : Phi-3-mini-4k-instruct em 8-bit -----------------------------------
+# ── LLM via ctransformers ----------------------------------------------------
 @st.cache_resource
 def get_llm():
-    from huggingface_hub import snapshot_download
-    from transformers import (
-        AutoTokenizer,
-        AutoModelForCausalLM,
-        BitsAndBytesConfig,
-    )
+    from ctransformers import AutoModelForCausalLM
 
-    repo_dir = snapshot_download(
-        "microsoft/Phi-3-mini-4k-instruct", token=HF_TOKEN
-    )
-
-    # quantização 8-bit (mais estável em CPU)
-    bnb_cfg = BitsAndBytesConfig(
-        load_in_8bit=True,
-        llm_int8_threshold=6.0,   # padrão seguro
-    )
-
-    tokenizer = AutoTokenizer.from_pretrained(repo_dir, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
-        repo_dir,
-        trust_remote_code=True,
-        quantization_config=bnb_cfg,
-        device_map="auto" if torch.cuda.is_available() else "cpu",
-        low_cpu_mem_usage=True,
+        MODEL_FILE,
+        model_type="phi",         # backend já conhece a arquitetura
+        gpu_layers=0              # 0 → tudo em CPU
     )
-    return tokenizer, model
+    return model
 
-# ── função pública ----------------------------------------------------------
+# ── geração -----------------------------------------------------------------
 def gerar_resposta(pergunta: str) -> str:
-    """Gera resposta do assistente financeiro usando RAG + LLM."""
     retriever = get_retriever()
-    tokenizer, model = get_llm()
+    model     = get_llm()
 
     docs = retriever.get_relevant_documents(pergunta)
     contexto = "\n\n".join(d.page_content[:1000] for d in docs) or "N/D"
@@ -86,13 +52,14 @@ Contexto:
 
 Pergunta:
 {pergunta}
-"""
 
-    inputs = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
-    output = model.generate(
-        inputs,
+Resposta:
+"""
+    # ctransformers usa chamada direta ao modelo (“pipeline” inline)
+    generated = model(
+        prompt,
         max_new_tokens=256,
-        temperature=0.1
-    )[0]
-    full = tokenizer.decode(output, skip_special_tokens=True)
-    return full[len(prompt):].strip()
+        temperature=0.1,
+        stream=False        # True se quiser streaming palavra a palavra
+    )
+    return generated.strip()
