@@ -1,15 +1,16 @@
+# src/main.py
 from pathlib import Path
 import os
 from dotenv import load_dotenv
 import streamlit as st
-import torch  # ← já vamos precisar
+import torch   # precisamos verificar GPU
 
 # ── env & timeout HF Hub ----------------------------------------------------
 load_dotenv()
 HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 os.environ["HF_HUB_REQUEST_TIMEOUT"] = "60,300"
 
-# 🟢  habilita back-end CPU do bitsandbytes se não houver GPU
+# 🟢  habilita back-end CPU do bitsandbytes caso não haja GPU
 if not torch.cuda.is_available():
     os.environ["BNB_CUDALESS"] = "1"
 
@@ -37,23 +38,24 @@ def get_retriever():
     vect = FAISS.from_documents(docs, embeddings)
     return vect.as_retriever(search_type="mmr", search_kwargs={"k": 3, "fetch_k": 4})
 
-# ── LLM : Phi-3-mini-4k-instruct em 4-bit -----------------------------------
+# ── LLM : Phi-3-mini-4k-instruct em 8-bit -----------------------------------
 @st.cache_resource
 def get_llm():
     from huggingface_hub import snapshot_download
-    from transformers import (AutoTokenizer,
-                              AutoModelForCausalLM,
-                              BitsAndBytesConfig)
+    from transformers import (
+        AutoTokenizer,
+        AutoModelForCausalLM,
+        BitsAndBytesConfig,
+    )
 
     repo_dir = snapshot_download(
         "microsoft/Phi-3-mini-4k-instruct", token=HF_TOKEN
     )
 
-    # configuração 4-bit (serve p/ CPU e GPU)
+    # quantização 8-bit (mais estável em CPU)
     bnb_cfg = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_quant_type="nf4",
+        load_in_8bit=True,
+        llm_int8_threshold=6.0,   # padrão seguro
     )
 
     tokenizer = AutoTokenizer.from_pretrained(repo_dir, trust_remote_code=True)
@@ -62,13 +64,13 @@ def get_llm():
         trust_remote_code=True,
         quantization_config=bnb_cfg,
         device_map="auto" if torch.cuda.is_available() else "cpu",
-        torch_dtype="auto",
         low_cpu_mem_usage=True,
     )
     return tokenizer, model
 
 # ── função pública ----------------------------------------------------------
 def gerar_resposta(pergunta: str) -> str:
+    """Gera resposta do assistente financeiro usando RAG + LLM."""
     retriever = get_retriever()
     tokenizer, model = get_llm()
 
@@ -94,4 +96,3 @@ Pergunta:
     )[0]
     full = tokenizer.decode(output, skip_special_tokens=True)
     return full[len(prompt):].strip()
-
