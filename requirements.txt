@@ -1,13 +1,9 @@
 streamlit==1.33.0
-#ctransformers==0.2.27           # carrega GGUF em CPU
 sentence-transformers==2.5.1
-transformers==4.40.2            # ainda preciso p/ embeddings
 faiss-cpu
 langchain==0.1.16
+langchain-community==0.0.38
 huggingface-hub
 python-dotenv
-bitsandbytes==0.45.5  
-accelerate==1.6.0  
-torch==2.2.2 
-
+ctransformers==0.2.27     
 
