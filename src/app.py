@@ -1,3 +1,10 @@
+########################################################
+import torch, bitsandbytes as bnb, accelerate
+print("torch:", torch.__version__,
+      "| bnb:", bnb.__version__,
+      "| accelerate:", accelerate.__version__,
+      "| CUDA?", torch.cuda.is_available())
+########################################################
 # src/app.py
 import streamlit as st
 import time
