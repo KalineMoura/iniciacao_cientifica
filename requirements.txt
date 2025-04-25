@@ -6,8 +6,8 @@ faiss-cpu
 langchain==0.1.16
 huggingface-hub
 python-dotenv
-bitsandbytes
-accelerate
+bitsandbytes==0.45.5  
+accelerate==1.6.0  
 torch==2.2.2 
 
 
